@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blast Radius</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root { --bg:#fafaf8; --ink:#141414; --mute:#6b6b6b; --line:#e4e2dd; --card:#ffffff; --accent:#E8590C; --ok:#1f8a4c; --warn:#c98a00; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:14px; padding:14px 22px; border-bottom:1px solid var(--line); background:var(--card); }
+  .logo { width:28px; height:28px; border-radius:50%; background:radial-gradient(circle, var(--accent) 0 30%, transparent 32%), radial-gradient(circle, transparent 0 55%, rgba(232,89,12,.35) 57% 62%, transparent 64%), radial-gradient(circle, transparent 0 80%, rgba(232,89,12,.18) 82% 88%, transparent 90%); }
+  h1 { font-size:17px; margin:0; letter-spacing:-.01em; }
+  header .sub { color:var(--mute); font-size:13px; }
+  header .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  button { font:inherit; border:1px solid var(--ink); background:var(--ink); color:#fff; padding:8px 14px; border-radius:6px; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); }
+  button.accent { background:var(--accent); border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  main { display:grid; grid-template-columns: 300px 1fr 340px; gap:16px; padding:16px 22px; height:calc(100vh - 58px); }
+  .col { display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .tile .k { color:var(--mute); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+  .tile .v { font-size:28px; font-weight:600; letter-spacing:-.02em; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .tile .v small { font-size:13px; color:var(--mute); font-weight:400; }
+  .risk .v { color:var(--accent); }
+  .risk.LOW .v { color:var(--ok); } .risk.MEDIUM .v { color:var(--warn); } .risk.NONE .v { color:var(--mute); }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--mute); margin:0 0 8px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:5px 0; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center; font-family: Consolas, "Cascadia Mono", monospace; font-size:12.5px; }
+  li:first-child { border-top:0; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
+  .dot.test { background:#3b6fd8; } .dot.changed { background:var(--ink); }
+  .depth { color:var(--mute); font-size:11px; margin-left:auto; }
+  .reasons li { font-family:inherit; font-size:13px; }
+  #graph { flex:1; background:var(--card); border:1px solid var(--line); border-radius:10px; position:relative; overflow:hidden; }
+  #graph svg { width:100%; height:100%; }
+  .legend { position:absolute; left:12px; bottom:10px; display:flex; gap:14px; font-size:12px; color:var(--mute); background:rgba(255,255,255,.85); padding:4px 8px; border-radius:6px; }
+  .legend span::before { content:""; display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:-1px; background:var(--c); }
+  pre { margin:0; background:#111; color:#e8e8e8; padding:12px; border-radius:8px; font:12px/1.5 Consolas, monospace; white-space:pre-wrap; overflow:auto; max-height:260px; }
+  .stamp { color:var(--mute); font-size:12px; }
+  .row { display:flex; gap:8px; }
+  .row button { flex:1; }
+  .result { display:flex; justify-content:space-between; align-items:baseline; margin:10px 0 6px; }
+  .result b { font-size:22px; }
+  .result .ok { color:var(--ok); } .result .fail { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div>
+  <div><h1>Blast Radius</h1><div class="sub" id="repo">analyzing…</div></div>
+  <div class="right"><span class="stamp" id="stamp"></span><button class="ghost" id="refresh">Re-analyze</button></div>
+</header>
+<main>
+  <div class="col">
+    <div class="tiles">
+      <div class="tile risk" id="risk"><div class="k">Risk</div><div class="v">–</div></div>
+      <div class="tile"><div class="k">Changed</div><div class="v" id="t-changed">–</div></div>
+      <div class="tile"><div class="k">Modules hit</div><div class="v" id="t-impacted">–</div></div>
+      <div class="tile"><div class="k">Tests to run</div><div class="v" id="t-tests">–</div></div>
+    </div>
+    <div class="card"><h2>Why this score</h2><ul class="reasons" id="reasons"></ul></div>
+    <div class="card"><h2>Changed functions</h2><ul id="changed"></ul></div>
+  </div>
+  <div id="graph">
+    <div class="legend"><span style="--c:#141414">changed</span><span style="--c:#E8590C">impacted</span><span style="--c:#3b6fd8">impacted test</span><span style="--c:#d6d3cc">untouched</span></div>
+  </div>
+  <div class="col">
+    <div class="card"><h2>Impacted, nearest first</h2><ul id="impacted"></ul></div>
+    <div class="card">
+      <h2>Run tests</h2>
+      <div class="row"><button class="accent" id="run-impacted">Run impacted only</button><button class="ghost" id="run-all">Run all</button></div>
+      <div class="result" id="result" hidden><span id="res-label"></span><b id="res-ms"></b></div>
+      <pre id="out" hidden></pre>
+    </div>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let sim, svg;
+
+async function load() {
+  const r = await fetch('/api/analyze').then(r => r.json());
+  $('#repo').textContent = r.root.replace(/\\/g,'/').split('/').slice(-2).join('/') + '  ·  diff vs ' + r.base + '  ·  ' + r.module_count + ' modules';
+  $('#stamp').textContent = 'analysis ' + r.analysis_ms + ' ms';
+  const risk = $('#risk'); risk.className = 'tile risk ' + r.risk_level;
+  risk.querySelector('.v').innerHTML = r.risk_level + ' <small>' + r.risk_score + '/100</small>';
+  const prod = r.impacted.filter(i => !i.is_test);
+  $('#t-changed').textContent = r.changed_modules.length;
+  $('#t-impacted').textContent = prod.length;
+  $('#t-tests').innerHTML = r.tests_selected.length + ' <small>of ' + r.tests_total + '</small>';
+  $('#reasons').innerHTML = r.risk_reasons.map(x => '<li>' + x + '</li>').join('');
+  $('#changed').innerHTML = r.changed_modules.length ? r.changed_modules.map(m => {
+    const fns = (r.changed_functions[m] || []);
+    return '<li><span class="dot changed"></span>' + m + (fns.length ? ' <span class="depth">' + fns.join(', ') + '()</span>' : '') + '</li>';
+  }).join('') : '<li style="color:var(--mute);font-family:inherit">working tree is clean. Edit a file in the repo and re-analyze.</li>';
+  $('#impacted').innerHTML = r.impacted.map(i => '<li><span class="dot ' + (i.is_test ? 'test' : '') + '"></span>' + i.module + (i.sensitive ? ' ⚠' : '') + '<span class="depth">d' + i.depth + ' via ' + i.via.split('.').pop() + '</span></li>').join('') || '<li style="color:var(--mute);font-family:inherit">nothing downstream</li>';
+  draw(r);
+}
+
+function draw(r) {
+  const el = $('#graph'); const W = el.clientWidth, H = el.clientHeight;
+  if (svg) svg.remove();
+  svg = d3.select(el).append('svg').attr('viewBox', [0,0,W,H]);
+  svg.append('defs').append('marker').attr('id','arrow').attr('viewBox','0 -4 8 8').attr('refX',14).attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+    .append('path').attr('d','M0,-4L8,0L0,4').attr('fill','#c9c6bf');
+  const color = n => n.state === 'changed' ? '#141414' : n.state === 'impacted' ? (n.test ? '#3b6fd8' : '#E8590C') : '#d6d3cc';
+  const nodes = r.nodes.map(n => ({...n}));
+  const links = r.edges.map(e => ({...e}));
+  const hot = new Set(nodes.filter(n => n.state !== 'clean').map(n => n.id));
+  const link = svg.append('g').selectAll('line').data(links).join('line')
+    .attr('stroke', l => hot.has(l.source) && hot.has(l.target) ? '#E8590C' : '#e4e2dd')
+    .attr('stroke-width', l => hot.has(l.source) && hot.has(l.target) ? 2 : 1).attr('marker-end','url(#arrow)');
+  const node = svg.append('g').selectAll('g').data(nodes).join('g');
+  node.append('circle').attr('r', n => n.state === 'changed' ? 13 : n.state === 'impacted' ? 10 : 7).attr('fill', color)
+    .attr('stroke', n => n.state === 'changed' ? '#E8590C' : '#fff').attr('stroke-width', n => n.state === 'changed' ? 3 : 1.5);
+  node.append('text').text(n => n.id.split('.').pop()).attr('dy', 22).attr('text-anchor','middle')
+    .attr('font-size', 11).attr('font-family','Consolas, monospace').attr('fill', n => n.state === 'clean' ? '#9a978f' : '#141414');
+  if (sim) sim.stop();
+  sim = d3.forceSimulation(nodes).force('link', d3.forceLink(links).id(d => d.id).distance(90))
+    .force('charge', d3.forceManyBody().strength(-380)).force('center', d3.forceCenter(W/2, H/2)).force('collide', d3.forceCollide(30))
+    .on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+  node.call(d3.drag().on('start', (e,d) => { sim.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; }).on('end', (e,d) => { sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+}
+
+async function run(mode) {
+  const btns = document.querySelectorAll('#run-impacted,#run-all'); btns.forEach(b => b.disabled = true);
+  $('#out').hidden = false; $('#out').textContent = 'running pytest…';
+  const r = await fetch('/api/run?mode=' + mode, {method:'POST'}).then(r => r.json());
+  $('#result').hidden = false;
+  $('#res-label').innerHTML = '<span class="' + (r.ok ? 'ok' : 'fail') + '">' + (r.ok ? 'PASS' : 'FAIL') + '</span> · ' + r.ran + ' test file' + (r.ran === 1 ? '' : 's') + ' (' + mode + ')';
+  $('#res-ms').textContent = r.ms + ' ms';
+  $('#out').textContent = r.output;
+  btns.forEach(b => b.disabled = false);
+}
+$('#refresh').onclick = load;
+$('#run-impacted').onclick = () => run('impacted');
+$('#run-all').onclick = () => run('all');
+load();
+</script>
+</body>
+</html>
