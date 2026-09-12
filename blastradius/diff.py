@@ -10,9 +10,12 @@ def changed_lines(root: str, base: str = "HEAD") -> dict[str, set[int]]:
     """Return {relative/path.py: {new line numbers touched}} for the diff against base."""
     try:
         out = subprocess.run(
-            ["git", "diff", "-U0", base, "--", "*.py"],
+            ["git", "diff", "-U0", base, "--", "."],
             cwd=root, capture_output=True, text=True, check=False,
         ).stdout
+        prefix = subprocess.run(
+            ["git", "rev-parse", "--show-prefix"], cwd=root, capture_output=True, text=True, check=False,
+        ).stdout.strip()
     except FileNotFoundError:
         return {}
     result: dict[str, set[int]] = {}
@@ -24,6 +27,11 @@ def changed_lines(root: str, base: str = "HEAD") -> dict[str, set[int]]:
                 current = None
             else:
                 current = p[2:] if p.startswith("b/") else p
+                if prefix and current.startswith(prefix):
+                    current = current[len(prefix):]
+                if not current.endswith(".py"):
+                    current = None
+                    continue
                 result.setdefault(current, set())
         elif line.startswith("@@") and current:
             m = HUNK.match(line)
