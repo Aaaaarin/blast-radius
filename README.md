@@ -6,6 +6,8 @@ Blast Radius reads your uncommitted diff, maps every changed line to the functio
 
 Built solo in one sitting for Frontier Cascadia 2026 (Automated Software Engineering track).
 
+![Blast Radius console after a one-line change to pricing](media/02-blast-radius.png)
+
 ## Quickstart
 
 ```
@@ -29,7 +31,7 @@ python demo.py reset
 1. Console opens on a clean tree: 21 modules, risk NONE.
 2. `python demo.py break` changes one line inside `apply_discount()` in `shop/pricing.py`.
 3. Re-analyze. The graph lights up: pricing (changed) reaches cart and payments at depth 1, checkout at depth 2. Four of ten test files are selected. Risk goes to HIGH 64/100 with the reasons listed: three production modules downstream, depth 2, the change sits on a pricing path, and no test file changed.
-4. Run impacted only. Pytest runs 4 files in well under a second and three of them fail. The bug is caught before the PR exists.
+4. Run impacted only. Pytest runs 4 files in under three seconds (interpreter startup included) and three of them fail. The bug is caught before the PR exists.
 5. Run all for comparison: 10 files, same failures, more time. Search, auth, reports and inventory tests never needed to run.
 
 ## What is real
@@ -44,7 +46,7 @@ python demo.py reset
 | Web console with live force graph | real, `blastradius/ui.html` (D3 from CDN is the only network fetch) |
 | Own test suite | 6 tests, `python -m pytest tests` |
 
-Measured on the sample repo (21 modules): analysis 130 to 160 ms, impacted run 4 of 10 test files.
+Measured on the sample repo (21 modules): analysis 130 to 300 ms, impacted run 4 of 10 test files in about 2.7 s including pytest startup.
 
 ## Honest limits and roadmap
 

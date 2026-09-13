@@ -17,7 +17,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(headless=True)
     ctx = b.new_context(viewport={"width": 1280, "height": 720}, record_video_dir=RAW, record_video_size={"width": 1280, "height": 720})
     page = ctx.new_page()
-    page.goto(URL)
+    page.goto(URL, wait_until="domcontentloaded", timeout=60000)
     page.wait_for_selector("#graph svg")
     time.sleep(4)                                   # 0-4s clean tree
     page.screenshot(path=os.path.join(ROOT, "media", "01-clean.png"))
